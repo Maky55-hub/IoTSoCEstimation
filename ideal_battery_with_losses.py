@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# In[26]:
+# In[80]:
 
 
 from scipy import interpolate
@@ -10,9 +10,10 @@ import pandas as pd
 import pybamm
 from typing import List, Dict, Union
 import matplotlib.pyplot as plt
+import time
 
 
-# In[17]:
+# In[81]:
 
 
 class Resistance():
@@ -41,7 +42,7 @@ class ResistanceCapacitance():
         return self.voltage
 
 
-# In[18]:
+# In[82]:
 
 
 class BatteryCell():
@@ -107,7 +108,7 @@ class BatteryCell():
         return self.V
 
 
-# In[19]:
+# In[83]:
 
 
 class BatteryCellWithLosses():
@@ -115,25 +116,26 @@ class BatteryCellWithLosses():
         self.cell = battery_cell_instance
         self._lossers = lossers
         self.V = self.cell.V
+        self.v_cell = self.cell.V
         
     def step(self, I, dt):
-        v_cell = self.cell.step(I, dt)
+        self.v_cell = self.cell.step(I, dt)
         v_loss = sum([losser.step(I, dt) for losser in self._lossers])
-        self.V = v_cell - v_loss
+        self.V = self.v_cell - v_loss
         
         return self.V
     
     def getSOC(self):
-        return self.cell.retrieveSOCByV(self.V)
+        return self.cell.retrieveSOCByV(self.v_cell)
 
 
-# In[36]:
+# In[84]:
 
 
 def simulate(battery: BatteryCellWithLosses, current_delta_list: List[float], records: List[Dict]):
     
     for current_delta in current_delta_list:
-        voltage= battery.step(current_delta, 30)
+        voltage= battery.step(current_delta, 1)
         records.append({
             "current_delta": current_delta,
             "voltage": voltage,
@@ -141,12 +143,13 @@ def simulate(battery: BatteryCellWithLosses, current_delta_list: List[float], re
         })
 
 
-# In[37]:
+# In[86]:
 
 
 # import drive cycle from file
-drive_cycle = pd.read_csv(f"{pybamm.__path__[0]}/input/drive_cycles/US06.csv", comment="#", header=None).to_numpy()
+drive_cycle = pd.read_csv(f"{pybamm.__path__[0]}/input/drive_cycles/UDDS.csv", comment="#", header=None).to_numpy()
 
+time_start = time.perf_counter()
 cellAh = 12
 r_ohm_internal = 4.2e-3 # used for debugging
 R0 = 0.5 * r_ohm_internal
@@ -167,17 +170,20 @@ battery = BatteryCellWithLosses(
     lossers=[Resistance(R0), ResistanceCapacitance(R1, C1), ResistanceCapacitance(R2, C2)])
 
 simulate(battery, current_delta_list, records)
+time_elapsed = (time.perf_counter() - time_start)
+print('time elapsed:', time_elapsed)
 result = pd.DataFrame(records)
+result['soc'] = result['soc'] * 100
 
 
-# In[53]:
+# In[87]:
 
 
 # Plot solar
 fig, ax1 = plt.subplots()
 ax1.set_ylabel("Current [A]")
-ax1.set_xlabel('time [s * 30]')
-result['current_delta'].plot(color="tab:blue", ax=ax1, label='Current')
+ax1.set_xlabel('time [s]')
+result['current_delta'].plot(color="tab:orange", ax=ax1, label='Current')
 ax1.legend(loc='lower center')
 
 # Plot taxis
@@ -185,16 +191,16 @@ ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
 ax2.set_ylabel("SOC")
 result['soc'].plot(color="tab:red", ax=ax2, label='SOC')
 ax2.legend(loc='lower left')
-fig.savefig('ideal_battery_soc_current.png')
+fig.savefig('ideal_battery_soc_current_US06.png', bbox_inches='tight')
 
 
-# In[54]:
+# In[62]:
 
 
 # Plot solar
 fig, ax1 = plt.subplots()
 ax1.set_ylabel("Terminal voltage [V]")
-ax1.set_xlabel('time [s * 30]')
+ax1.set_xlabel('time [s]')
 result['voltage'].plot(color="tab:blue", ax=ax1, label='Voltage')
 ax1.legend(loc='lower center')
 
@@ -203,7 +209,7 @@ ax2 = ax1.twinx()  # instantiate a second axes that shares the same x-axis
 ax2.set_ylabel("SOC")
 result['soc'].plot(color="tab:red", ax=ax2, label='SOC')
 ax2.legend(loc='lower left')
-fig.savefig('ideal_battery_soc_voltage.png')
+fig.savefig('ideal_battery_soc_voltage_US06.png', bbox_inches='tight')
 
 
 # In[ ]:
